@@ -6,6 +6,8 @@ use std::{result, thread};
 use std::io::{Read, Write};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+use std::fmt::Write as FmtWrite;
+use getrandom::fill;
 
 type Result<T> = result::Result<T, ()>;
 
@@ -140,7 +142,7 @@ fn server(messages: Receiver<Message>) -> Result<()> {
     }
 }
 
-fn client (stream: Arc<TcpStream>, messages: Sender<Message>) -> Result<()> {
+fn client (stream: Arc<TcpStream>, messages: Sender<Message>, token: String) -> Result<()> {
     let author_addr = stream.as_ref().peer_addr().map_err(|err| {
     eprintln!("Error getting peer address: {err}");
     })?;
@@ -181,6 +183,16 @@ fn client (stream: Arc<TcpStream>, messages: Sender<Message>) -> Result<()> {
 }
 
 fn main() -> Result<()> {
+    let mut buffer  = [0; 16];
+    let _ = fill(&mut buffer).map_err(|err| {
+        eprintln!("ERROR: could not generate random token: {err}");
+    });
+    let mut token = String::new();
+    for byte in buffer.iter(){
+        let _ = write!(&mut token, "{:02X}", byte);
+    }
+    println!("INFO: token: {}", token);
+    
     let address = "0.0.0.0:6969";
     let listener = TcpListener::bind(address).map_err(|err| {
         eprintln!("ERROR: could not bind {address}: {err}", err=Sensitive(err));
@@ -196,7 +208,11 @@ fn main() -> Result<()> {
                 let stream = Arc::new(stream);
                 let message_sender = message_sender.clone(); 
                 //by cloning it we will always have the original instance available and therefore we used expect in the server msg.recv()
-                thread::spawn(|| client(stream, message_sender));  
+                let token = token.clone();
+                thread::spawn( || client(stream, message_sender, token));
+                
+
+                
                 //we can use the .into() function converts the provided type into the required type,
                 //so instead of shadowing the stream with Arc::new() we can simply pass stream.into() while calling the client function and it will work fine 
             }
